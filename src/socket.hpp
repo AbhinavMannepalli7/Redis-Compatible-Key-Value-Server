@@ -13,12 +13,14 @@ public:
     void startListening(int backlog);
     int acceptConnection();
     void sendData(int clientFd, const std::string& data);
+    static int set_nonblocking(int fd);
+    int fd() const;
 
     Socket(const Socket&) = delete;
     Socket& operator=(const Socket&) = delete;
 
 private:
-    int fd = -1;
+    int fd_ = -1;
 };
 
 #endif
