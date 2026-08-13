@@ -3,7 +3,6 @@
 #include <stdexcept>
 #include <unistd.h>
 #include <fcntl.h>
-
 #include <sys/socket.h>
 
 Socket::Socket(int domain, int type, int protocol) {

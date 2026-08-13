@@ -1,6 +1,4 @@
-#ifndef SOCKET_HPP
-#define SOCKET_HPP
-
+#pragma once
 #include <string>
 #include <netinet/in.h>
 
@@ -22,5 +20,3 @@ public:
 private:
     int fd_ = -1;
 };
-
-#endif
