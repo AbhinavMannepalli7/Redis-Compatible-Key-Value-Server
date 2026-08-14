@@ -40,14 +40,18 @@ bool Connection::do_read() {
             }
         }
         else if (count == 0) {
-            // Client closed the connection
-            return false;
+            peer_closed_read = true;
+            return true;
         }
         else {
             // recv() failed
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // No more data available right now
                 return true;
+            }
+
+            if (errno == EINTR) {
+                continue;  // retry the recv
             }
 
             // Real error
@@ -58,21 +62,18 @@ bool Connection::do_read() {
 
 bool Connection::do_write() {
     while (!out_buffer.empty()) {
-        ssize_t count = send(
-            fd_,
-            out_buffer.data(),
-            out_buffer.size(),
-            0
-        );
+        ssize_t count = send(fd_, out_buffer.data(), out_buffer.size(), 0);
 
         if (count > 0) {
             out_buffer.erase(0, count);
         }
-        else if (count == -1 &&
-                 (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        else if (count == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
             // Socket cannot accept more data right now.
             // Keep the remaining data in out_buffer.
             return true;
+        }
+        if (count == -1 && errno == EINTR) {
+            continue;  // retry the recv
         }
         else {
             // Real send error

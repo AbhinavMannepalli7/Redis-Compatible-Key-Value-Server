@@ -18,4 +18,5 @@ private:
     std::string out_buffer;
 
     size_t bytes_sent_ = 0;
+    bool peer_closed_read = false;
 };

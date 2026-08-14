@@ -25,7 +25,7 @@ void handle_new_connections(int listen_fd, int epoll_fd, std::unordered_map<int,
         Socket::set_nonblocking(client_fd);
         // add new client_fd to list of current clients in events list
         struct epoll_event ev{};
-        ev.events = EPOLLIN;
+        ev.events = EPOLLIN | EPOLLET;
         ev.data.fd = client_fd;
         epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &ev);
         connections[client_fd] = std::make_unique<Connection>(client_fd);
@@ -77,17 +77,23 @@ int main(void) {
             } else {
                 // existing client sent data
                 //handle_client_readable(fd, epoll_fd, events[i].events);
+                if (events[i].events & (EPOLLERR | EPOLLHUP)) {
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
+                    connections.erase(fd);
+                    continue;
+                }
+
                 if (events[i].events & EPOLLIN) {
 
-                    if (!connections[fd]->do_read()) {
+                    if (!connections.at(fd)->do_read()) {
                         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
                         connections.erase(fd);
                         continue;
                     }
                 
-                    if (connections[fd]->has_data_to_write()) {
+                    if (connections.at(fd)->has_data_to_write()) {
                         struct epoll_event ev{};
-                        ev.events = EPOLLIN | EPOLLOUT;
+                        ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
                         ev.data.fd = fd;
                 
                         epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &ev);
@@ -95,15 +101,15 @@ int main(void) {
                 }
                 if (events[i].events & EPOLLOUT) {
 
-                    if (!connections[fd]->do_write()) {
+                    if (!connections.at(fd)->do_write()) {
                         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
                         connections.erase(fd);
                         continue;
                     }
                 
-                    if (!connections[fd]->has_data_to_write()) {
+                    if (!connections.at(fd)->has_data_to_write()) {
                         struct epoll_event ev{};
-                        ev.events = EPOLLIN;
+                        ev.events = EPOLLIN | EPOLLET;
                         ev.data.fd = fd;
                 
                         epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &ev);
