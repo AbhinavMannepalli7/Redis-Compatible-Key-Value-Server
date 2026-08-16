@@ -121,4 +121,4 @@ int main(void) {
     return 0;
 }
  
-// g++-15 -std=c++23 -Wall main.cpp socket.cpp connection.cpp -o main && ./main
+// g++-15 -std=c++23 -Wall main.cpp socket.cpp connection.cpp command.cpp dispatcher.cpp -o main && ./main

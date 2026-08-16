@@ -1,8 +1,12 @@
 #include "connection.hpp"
+#include "command.hpp"
+#include "dispatcher.hpp"
 
 #include <cerrno>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#define DELIMITER_SIZE 2
 
 Connection::Connection(int fd) {
     fd_ = fd;
@@ -24,7 +28,7 @@ bool Connection::do_read() {
 
             // Process every complete message currently in the buffer
             while (true) {
-                size_t pos = in_buffer.find('\n');
+                size_t pos = in_buffer.find("\r\n");
 
                 if (pos == std::string::npos) {
                     break;
@@ -32,11 +36,12 @@ bool Connection::do_read() {
 
                 std::string message = in_buffer.substr(0, pos);
 
-                // Remove message + '\n' from input buffer
-                in_buffer.erase(0, pos + 1);
+                Command cmd = parse_command(message);
 
-                // Echo the message
-                out_buffer += message + '\n';
+                out_buffer += dispatch(cmd);
+
+                // Remove message + "\r\n" from input buffer
+                in_buffer.erase(0, pos + DELIMITER_SIZE);
             }
         }
         else if (count == 0) {
@@ -50,7 +55,7 @@ bool Connection::do_read() {
                 return true;
             }
 
-            if (errno == EINTR) {
+            else if (errno == EINTR) {
                 continue;  // retry the recv
             }
 
@@ -72,8 +77,8 @@ bool Connection::do_write() {
             // Keep the remaining data in out_buffer.
             return true;
         }
-        if (count == -1 && errno == EINTR) {
-            continue;  // retry the recv
+        else if (count == -1 && errno == EINTR) {
+            continue;  // retry the send
         }
         else {
             // Real send error
@@ -85,4 +90,8 @@ bool Connection::do_write() {
 
 bool Connection::has_data_to_write() const {
     return !out_buffer.empty();
+}
+
+bool Connection::closed_read() const {
+    return peer_closed_read;
 }

@@ -10,6 +10,7 @@ public:
     bool do_read();
     bool do_write();
     bool has_data_to_write() const;
+    bool closed_read() const;
 
 private:
     int fd_;
