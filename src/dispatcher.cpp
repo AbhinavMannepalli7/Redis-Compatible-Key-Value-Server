@@ -4,31 +4,66 @@
 #include <unordered_map>
 #include <functional>
 
-static std::string handle_get(const Command& cmd) {
-    return "$-1\r\n";
+static std::string handle_get(const Command& cmd, Store& store) {
+    auto val = store.get(cmd.args[0]);
+    if (!val) {
+        return "$-1\r\n"; 
+    }
+    const std::string& s = val.value();
+    return "$" + std::to_string(s.size()) + "\r\n" + s + "\r\n";
 }
 
-static std::string handle_set(const Command& cmd) {
+static std::string handle_set(const Command& cmd, Store& store) {
+    std::string key = cmd.args[0];
+    std::string value = cmd.args[1];
+    store.set(key, value);
     return "+OK\r\n";
 }
 
-static std::string handle_del(const Command& cmd) {
-    return ":0\r\n";
+static std::string handle_del(const Command& cmd, Store& store) {
+    if (cmd.args.empty()) {
+        return "-ERR wrong number of arguments for 'del' command\r\n";
+    }
+    int count = 0;
+    for (const std::string& key : cmd.args) {
+        if (store.del(key)) {
+            count++;
+        }
+    }
+    return ":" + std::to_string(count) + "\r\n";
 }
 
 static std::string handle_ping(const Command& cmd) {
+    if (cmd.args.size() > 1) {
+        return "-ERR wrong number of arguments for 'ping' command\r\n";
+    }
+    if (cmd.args.size() == 1) {
+        const std::string& word = cmd.args[0];
+        return "$" + std::to_string(word.size()) + "\r\n" + word + "\r\n";
+    }
     return "+PONG\r\n";
 }
 
-static const std::unordered_map<std::string, std::function<std::string(const Command&)>> handlers = {
+static std::string handle_exists(const Command& cmd, Store& store) {
+    int count = 0;
+    for (std::string key : cmd.args) {
+        if (store.exists(key)) count++;
+    }
+    return ":" + std::to_string(count) + "\r\n";
+}
+
+static const std::unordered_map<std::string, std::function<std::string(const Command&, Store&)>> handlers = {
     {"GET",  handle_get},
     {"SET",  handle_set},
     {"DEL",  handle_del},
-    {"PING", handle_ping},
+    {"EXISTS",  handle_exists},
 };
 
-std::string dispatch(const Command& cmd) {
+std::string dispatch(const Command& cmd, Store& store) {
+    if (cmd.verb == "PING") {
+        return handle_ping(cmd);
+    }
     auto it = handlers.find(cmd.verb);
     if (it == handlers.end()) return "-ERR unknown command\r\n";
-    return it->second(cmd);
+    return it->second(cmd, store);
 }

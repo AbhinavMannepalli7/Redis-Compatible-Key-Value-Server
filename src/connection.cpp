@@ -16,7 +16,7 @@ Connection::~Connection() {
     close(fd_);
 }
 
-bool Connection::do_read() {
+bool Connection::do_read(Store& store) {
     char buf[4096];
 
     while (true) {
@@ -38,7 +38,7 @@ bool Connection::do_read() {
 
                 Command cmd = parse_command(message);
 
-                out_buffer += dispatch(cmd);
+                out_buffer += dispatch(cmd, store);
 
                 // Remove message + "\r\n" from input buffer
                 in_buffer.erase(0, pos + DELIMITER_SIZE);

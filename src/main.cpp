@@ -1,5 +1,6 @@
 #include "socket.hpp"
 #include "connection.hpp"
+#include "store.hpp"
 
 #include <stdexcept>
 #include <unistd.h>
@@ -33,6 +34,7 @@ void handle_new_connections(int listen_fd, int epoll_fd, std::unordered_map<int,
 }
  
 int main(void) {
+    Store store;
     struct sockaddr_in addrinfo;
     addrinfo.sin_family = AF_INET;
     addrinfo.sin_port = htons(PORT);
@@ -85,7 +87,7 @@ int main(void) {
 
                 if (events[i].events & EPOLLIN) {
 
-                    if (!connections.at(fd)->do_read()) {
+                    if (!connections.at(fd)->do_read(store)) {
                         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
                         connections.erase(fd);
                         continue;

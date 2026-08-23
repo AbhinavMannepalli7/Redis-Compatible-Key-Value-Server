@@ -3,7 +3,7 @@ CXXFLAGS = -std=c++23 -Wall -Wextra -g -fsanitize=address,undefined
 
 TARGET = server
 
-SRCS = main.cpp socket.cpp connection.cpp command.cpp dispatcher.cpp
+SRCS = main.cpp socket.cpp connection.cpp command.cpp dispatcher.cpp store.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 $(TARGET): $(OBJS)
