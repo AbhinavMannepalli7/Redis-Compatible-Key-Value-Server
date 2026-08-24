@@ -1,4 +1,5 @@
 import socket
+import time
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(("localhost", 4950))  # server's port
@@ -11,18 +12,20 @@ def recv_data():
     response = sock.recv(4096)          # read whatever comes back
     print(f"Got:  {response!r}")
 
-send_cmd("PING hi\r\n")
+send_cmd("SET foo bar\r\n")
 recv_data()
-send_cmd("SET foo bar\r\nSET hello world\r\n")
+
+send_cmd("EXPIRE foo 5\r\n")
 recv_data()
-send_cmd("GET f")
-send_cmd("oo\r\n")
+
+time.sleep(2)
+
+send_cmd("EXPIRE foo 20\r\n")
 recv_data()
-send_cmd("GET hello\r\n")
-recv_data()
-send_cmd("EXISTS hello\r\n")
-recv_data()
-send_cmd("DEL foo hello\r\n")
+
+time.sleep(6)
+
+send_cmd("GET foo\r\n")
 recv_data()
 
 sock.close()

@@ -8,6 +8,7 @@
 #include <memory>
 #include <fcntl.h>
 #include <sys/epoll.h>
+#include <sys/timerfd.h>
 
 typedef long long ll;
 #define PORT 4950
@@ -34,7 +35,6 @@ void handle_new_connections(int listen_fd, int epoll_fd, std::unordered_map<int,
 }
  
 int main(void) {
-    Store store;
     struct sockaddr_in addrinfo;
     addrinfo.sin_family = AF_INET;
     addrinfo.sin_port = htons(PORT);
@@ -66,6 +66,16 @@ int main(void) {
     struct epoll_event events[MAX_EVENTS];
     std::unordered_map<int, std::unique_ptr<Connection>> connections;
 
+    Store store;
+
+    int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+
+    struct epoll_event timer_ev{};
+    timer_ev.events = EPOLLIN;
+    timer_ev.data.fd = timer_fd;
+
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &timer_ev);
+
     while (true) {
         int n = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
         if (n == -1) { perror("epoll_wait"); break; }
@@ -76,9 +86,14 @@ int main(void) {
             if (fd == listener.fd()) {
                 // new connection waiting, accept them
                 handle_new_connections(listener.fd(), epoll_fd, connections);
+            } else if (fd == timer_fd) {
+                uint64_t expirations;
+                read(timer_fd, &expirations, sizeof(expirations));
+            
+                store.handle_expirations();
             } else {
                 // existing client sent data
-                //handle_client_readable(fd, epoll_fd, events[i].events);
+                // handle_client_readable(fd, epoll_fd, events[i].events);
                 if (events[i].events & (EPOLLERR | EPOLLHUP)) {
                     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
                     connections.erase(fd);
@@ -118,6 +133,19 @@ int main(void) {
                     }
                 }
             }
+        }
+        auto next = store.next_expiry();
+        if (next) {
+            itimerspec timer{};
+    
+            timer.it_value.tv_sec = *next / 1000;
+            timer.it_value.tv_nsec = (*next % 1000) * 1000000;
+    
+            timerfd_settime(timer_fd, TFD_TIMER_ABSTIME, &timer, nullptr);
+        } else {
+            // No more expiries = disable timer
+            itimerspec timer{};
+            timerfd_settime(timer_fd, 0, &timer, nullptr);
         }
     }
     return 0;
