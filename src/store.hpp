@@ -25,6 +25,7 @@ public:
     bool exists(const std::string& key);
     bool expire(const std::string& key, const std::string& time);
     int64_t ttl(const std::string& key);
+    std::optional<int64_t> incr_decr(const std::string& key, const int64_t& delta);
     bool hasExpiry(const std::string& key);
     void handle_expirations();
     std::optional<uint64_t> next_expiry() const;

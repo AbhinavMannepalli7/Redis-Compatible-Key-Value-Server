@@ -1,5 +1,9 @@
 #include "store.hpp"
 #include <chrono>
+#include <cctype>
+#include <cstdint> 
+#include <cstdlib> 
+#include <stdexcept> 
 
 bool Store::exists(const std::string& key) {
     auto it = data_.find(key);
@@ -61,6 +65,37 @@ int64_t Store::ttl(const std::string& key) {
     return static_cast<int64_t>((ttl_map[key] - now) / 1000);
 }
 
+std::optional<int64_t> Store::incr_decr(const std::string& key, const int64_t& delta) {
+    if (!exists(key)) {
+        set(key, std::to_string(delta));
+        return delta;
+    }
+
+    const std::string& value = data_[key];
+    size_t pos;
+    int64_t n;
+
+    try {
+        n = std::stoll(value, &pos);
+    } catch (const std::out_of_range&) {
+        return std::nullopt;
+    } catch (const std::invalid_argument&) {
+        return std::nullopt;
+    }
+
+    if (pos != value.length()) {
+        return std::nullopt;  
+    }
+
+    if ((delta == -1 && n == INT64_MIN) || (delta == 1 && n == INT64_MAX)) {
+        return std::nullopt;
+    }
+
+    int64_t res = n + delta;
+    data_[key] = std::to_string(res);
+    return res;
+}
+
 void Store::handle_expirations() {
     uint64_t now =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -84,3 +119,4 @@ std::optional<uint64_t> Store::next_expiry() const {
 
     return min_heap.top().expiry_time;
 }
+

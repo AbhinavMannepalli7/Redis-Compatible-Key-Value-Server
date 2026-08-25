@@ -14,8 +14,8 @@ static std::string handle_get(const Command& cmd, Store& store) {
 }
 
 static std::string handle_set(const Command& cmd, Store& store) {
-    std::string key = cmd.args[0];
-    std::string value = cmd.args[1];
+    const std::string& key = cmd.args[0];
+    const std::string& value = cmd.args[1];
     store.set(key, value);
     return "+OK\r\n";
 }
@@ -46,15 +46,15 @@ static std::string handle_ping(const Command& cmd) {
 
 static std::string handle_exists(const Command& cmd, Store& store) {
     int count = 0;
-    for (std::string key : cmd.args) {
+    for (const std::string& key : cmd.args) {
         if (store.exists(key)) count++;
     }
     return ":" + std::to_string(count) + "\r\n";
 }
 
 static std::string handle_expire(const Command& cmd, Store& store) {
-    std::string key = cmd.args[0];
-    std::string time = cmd.args[1];
+    const std::string& key = cmd.args[0];
+    const std::string& time = cmd.args[1];
     if (store.expire(key, time)) {
         return "1\r\n";
     }
@@ -62,9 +62,23 @@ static std::string handle_expire(const Command& cmd, Store& store) {
 }
 
 static std::string handle_ttl(const Command& cmd, Store& store) {
-    std::string key = cmd.args[0];
+    const std::string& key = cmd.args[0];
     int64_t res = store.ttl(key);
     return std::to_string(res) + "\r\n";
+}
+
+static std::string handle_incr(const Command& cmd, Store& store) {
+    const std::string& key = cmd.args[0];
+    auto res = store.incr_decr(key, 1);
+    if (!res) return "-ERR cannot increment\r\n";
+    return std::to_string(res.value()) + "\r\n";
+}
+
+static std::string handle_decr(const Command& cmd, Store& store) {
+    const std::string& key = cmd.args[0];
+    auto res = store.incr_decr(key, -1);
+    if (!res) return "-ERR cannot decrement\r\n";
+    return std::to_string(res.value()) + "\r\n";
 }
 
 static const std::unordered_map<std::string, std::function<std::string(const Command&, Store&)>> handlers = {
@@ -74,6 +88,8 @@ static const std::unordered_map<std::string, std::function<std::string(const Com
     {"EXISTS", handle_exists},
     {"EXPIRE", handle_expire},
     {"TTL", handle_ttl},
+    {"INCR", handle_incr},
+    {"DECR", handle_decr},
 };
 
 std::string dispatch(const Command& cmd, Store& store) {
