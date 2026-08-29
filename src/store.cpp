@@ -1,43 +1,39 @@
 #include "store.hpp"
 #include <chrono>
 #include <cctype>
-#include <cstdint> 
-#include <cstdlib> 
-#include <stdexcept> 
+#include <cstdlib>
+#include <stdexcept>
+
+// locked (public) versions: acquire mu_, then delegate
 
 bool Store::exists(const std::string& key) {
-    auto it = data_.find(key);
-    return it != data_.end();
+    std::lock_guard<std::mutex> lock(mu_);
+    return exists_locked(key);
 }
 
 bool Store::hasExpiry(const std::string& key) {
-    auto it = ttl_map.find(key);
-    return it != ttl_map.end();
+    std::lock_guard<std::mutex> lock(mu_);
+    return hasExpiry_locked(key);
 }
 
 std::optional<std::string> Store::get(const std::string& key) {
-    if (!exists(key)) return std::nullopt;
-    return data_[key];
+    std::lock_guard<std::mutex> lock(mu_);
+    return get_locked(key);
 }
 
 void Store::set(const std::string& key, const std::string& value) {
-    data_[key] = value;
-    ttl_map.erase(key);
-    keyVersion[key]++;
+    std::lock_guard<std::mutex> lock(mu_);
+    set_locked(key, value);
 }
 
 bool Store::del(const std::string& key) {
-    if (!exists(key)) return false;
-
-    data_.erase(key);
-    ttl_map.erase(key);
-    keyVersion[key]++;
-
-    return true;
+    std::lock_guard<std::mutex> lock(mu_);
+    return del_locked(key);
 }
 
 bool Store::expire(const std::string& key, const std::string& time) {
-    if (!exists(key)) return false;
+    std::lock_guard<std::mutex> lock(mu_);
+    if (!exists_locked(key)) return false;
 
     uint64_t expiry_time = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()
@@ -51,9 +47,10 @@ bool Store::expire(const std::string& key, const std::string& time) {
 }
 
 int64_t Store::ttl(const std::string& key) {
-    if (!exists(key)) return -2;
+    std::lock_guard<std::mutex> lock(mu_);
 
-    if (!hasExpiry(key)) return -1;
+    if (!exists_locked(key)) return -2;
+    if (!hasExpiry_locked(key)) return -1;
 
     uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()
@@ -66,8 +63,10 @@ int64_t Store::ttl(const std::string& key) {
 }
 
 std::optional<int64_t> Store::incr_decr(const std::string& key, const int64_t& delta) {
-    if (!exists(key)) {
-        set(key, std::to_string(delta));
+    std::lock_guard<std::mutex> lock(mu_);
+
+    if (!exists_locked(key)) {
+        set_locked(key, std::to_string(delta));
         return delta;
     }
 
@@ -84,7 +83,7 @@ std::optional<int64_t> Store::incr_decr(const std::string& key, const int64_t& d
     }
 
     if (pos != value.length()) {
-        return std::nullopt;  
+        return std::nullopt;
     }
 
     if ((delta == -1 && n == INT64_MIN) || (delta == 1 && n == INT64_MAX)) {
@@ -97,6 +96,7 @@ std::optional<int64_t> Store::incr_decr(const std::string& key, const int64_t& d
 }
 
 void Store::handle_expirations() {
+    std::lock_guard<std::mutex> lock(mu_);
     uint64_t now =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()
@@ -109,14 +109,47 @@ void Store::handle_expirations() {
         if (cur.version != keyVersion[cur.key])
             continue;
 
-        del(cur.key);
+        del_locked(cur.key);
     }
 }
 
 std::optional<uint64_t> Store::next_expiry() const {
+    std::lock_guard<std::mutex> lock(mu_);
     if (min_heap.empty())
         return std::nullopt;
 
     return min_heap.top().expiry_time;
 }
 
+// unlocked (private) versions: caller must already hold mu_
+
+bool Store::exists_locked(const std::string& key) {
+    auto it = data_.find(key);
+    return it != data_.end();
+}
+
+bool Store::hasExpiry_locked(const std::string& key) {
+    auto it = ttl_map.find(key);
+    return it != ttl_map.end();
+}
+
+std::optional<std::string> Store::get_locked(const std::string& key) {
+    if (!exists_locked(key)) return std::nullopt;
+    return data_[key];
+}
+
+void Store::set_locked(const std::string& key, const std::string& value) {
+    data_[key] = value;
+    ttl_map.erase(key);
+    keyVersion[key]++;
+}
+
+bool Store::del_locked(const std::string& key) {
+    if (!exists_locked(key)) return false;
+
+    data_.erase(key);
+    ttl_map.erase(key);
+    keyVersion[key]++;
+
+    return true;
+}

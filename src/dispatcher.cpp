@@ -7,7 +7,7 @@
 static std::string handle_get(const Command& cmd, Store& store) {
     auto val = store.get(cmd.args[0]);
     if (!val) {
-        return "$-1\r\n"; 
+        return "$-1\r\n";
     }
     const std::string& s = val.value();
     return "$" + std::to_string(s.size()) + "\r\n" + s + "\r\n";
@@ -56,29 +56,29 @@ static std::string handle_expire(const Command& cmd, Store& store) {
     const std::string& key = cmd.args[0];
     const std::string& time = cmd.args[1];
     if (store.expire(key, time)) {
-        return "1\r\n";
+        return ":1\r\n";
     }
-    return "0\r\n";
+    return ":0\r\n";
 }
 
 static std::string handle_ttl(const Command& cmd, Store& store) {
     const std::string& key = cmd.args[0];
     int64_t res = store.ttl(key);
-    return std::to_string(res) + "\r\n";
+    return ":" + std::to_string(res) + "\r\n";
 }
 
 static std::string handle_incr(const Command& cmd, Store& store) {
     const std::string& key = cmd.args[0];
     auto res = store.incr_decr(key, 1);
     if (!res) return "-ERR cannot increment\r\n";
-    return std::to_string(res.value()) + "\r\n";
+    return ":" + std::to_string(res.value()) + "\r\n";
 }
 
 static std::string handle_decr(const Command& cmd, Store& store) {
     const std::string& key = cmd.args[0];
     auto res = store.incr_decr(key, -1);
     if (!res) return "-ERR cannot decrement\r\n";
-    return std::to_string(res.value()) + "\r\n";
+    return ":" + std::to_string(res.value()) + "\r\n";
 }
 
 static const std::unordered_map<std::string, std::function<std::string(const Command&, Store&)>> handlers = {
