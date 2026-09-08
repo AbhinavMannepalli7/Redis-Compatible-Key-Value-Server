@@ -35,6 +35,7 @@ bool Store::expire(const std::string& key, const std::string& time) {
     std::lock_guard<std::mutex> lock(mu_);
     if (!exists_locked(key)) return false;
 
+    // add the TTL to current time, to get time of expiry
     uint64_t expiry_time = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()
     ).count() + std::stoull(time) * 1000;
@@ -52,6 +53,7 @@ int64_t Store::ttl(const std::string& key) {
     if (!exists_locked(key)) return -2;
     if (!hasExpiry_locked(key)) return -1;
 
+    // get current time
     uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()
     ).count();
@@ -74,6 +76,7 @@ std::optional<int64_t> Store::incr_decr(const std::string& key, const int64_t& d
     size_t pos;
     int64_t n;
 
+    // check for invalid value
     try {
         n = std::stoll(value, &pos);
     } catch (const std::out_of_range&) {
@@ -90,6 +93,7 @@ std::optional<int64_t> Store::incr_decr(const std::string& key, const int64_t& d
         return std::nullopt;
     }
 
+    // update the TTL
     int64_t res = n + delta;
     data_[key] = std::to_string(res);
     return res;
@@ -97,11 +101,14 @@ std::optional<int64_t> Store::incr_decr(const std::string& key, const int64_t& d
 
 void Store::handle_expirations() {
     std::lock_guard<std::mutex> lock(mu_);
+    
+    // get current time
     uint64_t now =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()
         ).count();
 
+    // remove all expired keys from min_heap; remove from store, if it is the current version of the key
     while (!min_heap.empty() && min_heap.top().expiry_time <= now) {
         ExpiryEntry cur = min_heap.top();
         min_heap.pop();
@@ -109,6 +116,7 @@ void Store::handle_expirations() {
         if (cur.version != keyVersion[cur.key])
             continue;
 
+        // only delete key from store, not from keyVersion as if the same key gets SET again we need to differentiate between them
         del_locked(cur.key);
     }
 }

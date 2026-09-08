@@ -39,7 +39,7 @@ def test_del():
     s = connect()
     send_cmd(s, "SET todelete 123")
     resp = send_cmd(s, "DEL todelete")
-    print(f"DEL response: {resp!r}")  # check this matches your actual format
+    print(f"DEL response: {resp!r}") 
 
     resp = send_cmd(s, "GET todelete")
     assert "-1" in resp or "nil" in resp.lower(), f"key should be gone: {resp!r}"
@@ -82,7 +82,7 @@ def test_partial_send():
     print("test_partial_send: PASS")
 
 
-# 4. Concurrency: many clients hammering shared keys
+# 4. Concurrency: many clients sending shared keys, does server prevent race conditions?
 
 def hammer_incr(key, n_ops, results, idx):
     s = connect()
@@ -93,11 +93,6 @@ def hammer_incr(key, n_ops, results, idx):
 
 
 def test_concurrent_incr(n_threads=8, n_ops=200):
-    """
-    Since your Store is a single shared instance behind a mutex,
-    N threads each doing INCR on the same key should sum correctly
-    with no lost updates. This is the real test of your Day 10 locking.
-    """
     s = connect()
     send_cmd(s, "SET counter 0")
     s.close()
@@ -117,6 +112,7 @@ def test_concurrent_incr(n_threads=8, n_ops=200):
     resp = send_cmd(s, "GET counter")
     s.close()
     print(f"Final counter value: {resp!r} (expected {n_threads * n_ops})")
+    # checking that the numbers got updated correctly, one operation at a time
     assert str(n_threads * n_ops) in resp, "LOST UPDATES — locking bug in Store"
     print("test_concurrent_incr: PASS")
 
@@ -125,31 +121,45 @@ def test_concurrent_incr(n_threads=8, n_ops=200):
 
 def load_worker(n_ops, results, idx):
     s = connect()
-    start = time.time()
+    latencies = []
     key = "".join(random.choices(string.ascii_lowercase, k=6))
     for i in range(n_ops):
+        start = time.perf_counter()
         send_cmd(s, f"SET {key} val{i}")
         send_cmd(s, f"GET {key}")
-    elapsed = time.time() - start
-    results[idx] = elapsed
+        end = time.perf_counter()
+        latencies.append((end-start)*1_000_000)
+    results[idx] = latencies
     s.close()
 
+def percentile(sorted_latencies, p):
+    idx = int(p * len(sorted_latencies))
+    return sorted_latencies[min(idx, len(sorted_latencies) - 1)]
 
 def test_load(n_threads=16, n_ops=500):
-    results = [0.0] * n_threads
+    # the list of latencies for each operation in each thread
+    results = [None] * n_threads
     threads = []
-    start = time.time()
+    start = time.perf_counter()
     for i in range(n_threads):
         t = threading.Thread(target=load_worker, args=(n_ops, results, i))
         threads.append(t)
         t.start()
     for t in threads:
         t.join()
-    total_elapsed = time.time() - start
-    total_ops = n_threads * n_ops * 2  # SET + GET per op
-    print(f"Load test: {total_ops} ops in {total_elapsed:.2f}s "
-          f"= {total_ops / total_elapsed:.0f} ops/sec")
+    total_elapsed = time.perf_counter() - start
+    all_latencies = [lat for thread_latencies in results for lat in thread_latencies]
+    all_latencies.sort()
 
+    total_ops = n_threads * n_ops * 2  # SET + GET per iteration
+    ops_per_sec = total_ops / total_elapsed
+    p50 = percentile(all_latencies, 0.50)
+    p99 = percentile(all_latencies, 0.99)
+
+    print(f"Load test ({n_threads} threads x {n_ops} ops):")
+    print(f"  {total_ops} ops in {total_elapsed:.2f}s = {ops_per_sec:.0f} ops/sec")
+    print(f"  p50 latency: {p50:.1f}µs")
+    print(f"  p99 latency: {p99:.1f}µs")
 
 if __name__ == "__main__":
     tests = [

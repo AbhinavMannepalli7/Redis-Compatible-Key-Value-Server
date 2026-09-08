@@ -28,12 +28,11 @@ void set_epoll_events(int epoll_fd, int fd, uint32_t events) {
 
 void handle_new_connections(int listen_fd, int epoll_fd, std::unordered_map<int, std::unique_ptr<Connection>>& connections) {
     while (true) {
-        // accept4 with SOCK_NONBLOCK sets non-blocking atomically at accept time
+        // sets non-blocking at accept time
         int client_fd = accept4(listen_fd, nullptr, nullptr, SOCK_NONBLOCK);
         if (client_fd == -1) {
             // no more pending connections right now
             if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-            // transient errors: this particular accept failed, but there may
             // still be more pending connections in the queue, so keep going
             if (errno == ECONNABORTED || errno == EINTR) continue;
             perror("accept4");
@@ -48,9 +47,7 @@ void handle_new_connections(int listen_fd, int epoll_fd, std::unordered_map<int,
     }
 }
 
-void worker_loop(int thread_id, Store& store) {
-    (void)thread_id;
-
+void worker_loop(Store& store) {
     struct sockaddr_in addrinfo;
     addrinfo.sin_family = AF_INET;
     addrinfo.sin_port = htons(PORT);
@@ -95,11 +92,13 @@ void worker_loop(int thread_id, Store& store) {
         for (int i = 0; i < n; ++i) {
             int fd = events[i].data.fd;
 
+            // if signal came from listener fd, then we know a new client wants to connect
             if (fd == listener.fd()) {
                 handle_new_connections(listener.fd(), epoll_fd, connections);
                 continue;
             }
 
+            // signal came from timer_fd, therefore a key has expired
             if (fd == timer_fd) {
                 uint64_t expirations;
                 read(timer_fd, &expirations, sizeof(expirations));
@@ -107,7 +106,6 @@ void worker_loop(int thread_id, Store& store) {
                 continue;
             }
 
-            // existing client fd
             if (events[i].events & (EPOLLERR | EPOLLHUP)) {
                 epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
                 connections.erase(fd);
@@ -119,24 +117,28 @@ void worker_loop(int thread_id, Store& store) {
                 continue;
             }
             auto& conn = it->second;
-
+            
+            // signal that I am receiving data
             if (events[i].events & EPOLLIN) {
                 if (!conn->do_read(store)) {
                     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
                     connections.erase(fd);
                     continue;
                 }
+                // if there is data to write, we want to be signalled when client wants to receive it
                 if (conn->has_data_to_write()) {
                     set_epoll_events(epoll_fd, fd, EPOLLIN | EPOLLOUT | EPOLLET);
                 }
             }
 
+            // signal that I can send data
             if (events[i].events & EPOLLOUT) {
                 if (!conn->do_write()) {
                     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
                     connections.erase(fd);
                     continue;
                 }
+                // if there is no more data to write, we dont want client to keep requesting to receive more data
                 if (!conn->has_data_to_write()) {
                     set_epoll_events(epoll_fd, fd, EPOLLIN | EPOLLET);
                 }
@@ -165,11 +167,9 @@ int main() {
     std::vector<std::thread> workers;
     workers.reserve(num_threads);
     for (int i = 0; i < num_threads; i++) {
-        workers.emplace_back(worker_loop, i, std::ref(store));
+        workers.emplace_back(worker_loop, std::ref(store));
     }
     for (auto& t : workers) {
         t.join(); // blocks forever until worker_loop returns
     }
 }
-
-// g++-15 -std=c++23 -Wall main.cpp socket.cpp connection.cpp command.cpp dispatcher.cpp -o main && ./main

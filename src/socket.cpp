@@ -16,19 +16,19 @@ Socket::~Socket() {
 }
 
 void Socket::bindSocket(const sockaddr_in& addr) {
-    if (::bind(fd_, (sockaddr*)&addr, sizeof(addr)) == -1) {
+    if (bind(fd_, (sockaddr*)&addr, sizeof(addr)) == -1) {
         throw std::runtime_error("bind() failed");
     }
 }
 
 void Socket::startListening(int backlog) {
-    if (::listen(fd_, backlog) == -1) {
+    if (listen(fd_, backlog) == -1) {
         throw std::runtime_error("listen() failed");
     }
 }
 
 int Socket::acceptConnection() {
-    int newfd = ::accept(fd_, nullptr, nullptr);
+    int newfd = accept(fd_, nullptr, nullptr);
 
     if (newfd == -1) {
         throw std::runtime_error("accept() failed");
@@ -37,7 +37,7 @@ int Socket::acceptConnection() {
 }
 
 void Socket::sendData(int clientFd, const std::string& data) {
-    if (::send(clientFd, data.c_str(), data.size(), 0) == -1) {
+    if (send(clientFd, data.c_str(), data.size(), 0) == -1) {
         throw std::runtime_error("send() failed");
     }
 }

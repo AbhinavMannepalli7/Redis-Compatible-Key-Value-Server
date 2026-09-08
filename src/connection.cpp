@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+// \r\n
 #define DELIMITER_SIZE 2
 
 Connection::Connection(int fd) {
